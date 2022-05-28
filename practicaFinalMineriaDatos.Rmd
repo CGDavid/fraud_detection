@@ -1,0 +1,170 @@
+El análisis exploratorio comienza investigando el significado y la naturaleza de 
+las variables que nos proporciona el datase. Distinguiremos entre qué variables 
+son relevantes para la clasificación de los datos.
+
+```{r}
+options(warn=-1)
+library(data.table)
+library(caTools)
+library(smotefamily)
+library(dplyr)
+library(psych)
+library(heatmaply)
+```
+
+Leemos y guardamos el dataset. Echamos un vistazo a las columnas para ver qué tipo
+de datos tenemos.
+
+```{r}
+df <- read.csv("creditcard.csv")
+head(df, 10)
+```
+
+```{r}
+print(paste("Tenemos un dataset con un total de", nrow(df), "datos"))
+```
+
+Podemos comprobar que todas las columnas menos Time y amount están ofuscadas, por
+lo que no podremos usar el sentido común en una primera instancia para elegir o 
+descartar variables, ni tampoco para crear nuevas variables a partir de las originales.
+
+Vamos a revisar la integridad de los datos. Empezaremos buscando campos vacíos.
+
+```{r}
+na_cols <- sapply(df, function(x) any(is.na(x) | x == '' ))
+print(na_cols)
+```
+
+Comprobamos que no se haya colado ningún dato no numérico.
+
+```{r}
+nan_cols <- sapply(df, function(x) any(is.nan(x)))
+print(nan_cols)
+```
+
+Se observa que los datos son correctos por lo que no hay que hacer un preprocesado
+para limpiarlos.
+
+Se revisan a continuación las características de cada variable:
+
+```{r}
+describe(select(df, -c(Time, Class, Amount)), fast=TRUE)
+```
+
+Se observa que todas las variables son numéricas, con valores decimales y valores tanto 
+positivos menos negativos. Todas las variables tienen media 0, por lo que se intuye
+que los valores han sido previamente normalizados, seguramente para ofuscar más los
+datos debido a la confidencialidad de los mismos. A pesar de ello, se vé en las 
+columnas "min" y "max" datos muy por encima del valor medio, con diferencias muy 
+superiores a la desviación estándar.
+
+Vamos a visualizar mediante boxplot los outliers de las diferentes variables:
+
+```{r}
+boxplot(select(df, -c(Time, Class, Amount)))
+```
+Efectivamente, se comprueba que hay outliers en varias variables. Vamos a 
+eliminarlos para evitar que afecten negativamente a nuestro modelo. Consideraremos
+outlier cualquier dato que esté 1.5 * IQR por debajo o por encima de los cuantiles
+inferior o superior respectivamente. Por no ser demasiado estrictos, usaremos el 
+percentil 5 y 95:
+
+```{r}
+outliers <- function(data) {
+  Q1 <- quantile(data, probs=.05)
+  Q3 <- quantile(data, probs=.95)
+  IQR = Q3-Q1
+
+  Lower <- Q1 - 1.5 * IQR
+  Upper <- Q3 + 1.5 * IQR 
+  
+  data < Lower | data > Upper
+}
+
+df_variables <- select(df, -c(Time, Class, Amount))
+
+for (col in names(df_variables)) {
+  df <- df[!outliers(df[[col]]),]
+}
+
+```
+
+```{r}
+boxplot(select(df, -c(Time, Class, Amount)))
+```
+```{r}
+describe(select(df, -c(Time, Class, Amount)), fast=TRUE)
+```
+
+Se aprecia que, tras la limpieza de datos, ya no existen valores mínimos y
+máximos tan alejados de la media.
+
+El dataset sigue siendo grande y seguramente no todos los datos aporten información 
+al modelo que usemos para predecir valores, por lo que vamos a intentar acortarlos. 
+En primer lugar, vamos a comprobar qué correlaciones hay entre variables.
+
+```{r}
+heatmaply_cor(x = cor(df), xlab = "Features", ylab = "Features")
+```
+
+
+
+Vamos a ver la distribución de los datos según la clase:
+
+```{r}
+
+```
+
+Dividamos el dataset en 70% para el train y el 30% para el test. Dado que es un dataset grande usaremos la función fread de la librería data.table, para la division usaremos la función sample.split de la libreria catools.
+
+```{r}
+sample <- sample.split(df$Class, SplitRatio = 0.7)
+train  <- subset(df, sample == TRUE)
+test   <- subset(df, sample == FALSE)
+
+X_train  <- select(train,-Class)
+X_test   <- select(test,-Class)
+
+Y_train <- select(train,Class)
+Y_test <-  select(test,Class)
+
+
+
+```
+
+Realicemos un análisis exploratorio del dataset. Empecemos por ver cuantas muestras pertenecen a cada clase.
+
+```{r}
+table(df$Class)
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+new_train = BLSMOTE(data.frame(X_train),data.frame(Y_train), K=5,C=5)
+#X_train_new = select(new_df,-Class)
+#Y_train_new = select(new_df,Class)
+new_train$data$class <- as.numeric(new_train$data$class)
+model <- glm(class~., data = new_train$data, family = binomial())
+table(new_train$data$class)
+table(df$Class)
+#summary(model)
+```
+```{r}
+library('caret')
+Y_test_pred <- round(predict(model, newdata = X_test, type = "response") , 0)
+print(Y_test_pred)
+confusionMatrix(as.factor(Y_test), as.factor(Y_test_pred))
+```
+```{r}
+
+```
+
+```{r}
+
+```
+

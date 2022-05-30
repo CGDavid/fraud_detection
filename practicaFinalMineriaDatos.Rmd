@@ -10,6 +10,7 @@ library(smotefamily)
 library(dplyr)
 library(psych)
 library(heatmaply)
+library(ggplot2)
 ```
 
 Leemos y guardamos el dataset. Echamos un vistazo a las columnas para ver qué tipo
@@ -24,7 +25,7 @@ head(df, 10)
 print(paste("Tenemos un dataset con un total de", nrow(df), "datos"))
 ```
 
-Podemos comprobar que todas las columnas menos Time y amount están ofuscadas, por
+Podemos comprobar que todas las columnas menos Time y Amount están ofuscadas, por
 lo que no podremos usar el sentido común en una primera instancia para elegir o 
 descartar variables, ni tampoco para crear nuevas variables a partir de las originales.
 
@@ -48,12 +49,12 @@ para limpiarlos.
 Se revisan a continuación las características de cada variable:
 
 ```{r}
-describe(select(df, -c(Time, Class, Amount)), fast=TRUE)
+describe(select(df, -c(Time, Class)), fast=TRUE)
 ```
 
 Se observa que todas las variables son numéricas, con valores decimales y valores tanto 
-positivos menos negativos. Todas las variables tienen media 0, por lo que se intuye
-que los valores han sido previamente normalizados, seguramente para ofuscar más los
+positivos menos negativos. Todas las variables (menos Amount) tienen media 0, por lo que se intuye
+que los valores han sido previamente normalizados, seguramente para ofuscar los
 datos debido a la confidencialidad de los mismos. A pesar de ello, se vé en las 
 columnas "min" y "max" datos muy por encima del valor medio, con diferencias muy 
 superiores a la desviación estándar.
@@ -63,6 +64,7 @@ Vamos a visualizar mediante boxplot los outliers de las diferentes variables:
 ```{r}
 boxplot(select(df, -c(Time, Class, Amount)))
 ```
+
 Efectivamente, se comprueba que hay outliers en varias variables. Vamos a 
 eliminarlos para evitar que afecten negativamente a nuestro modelo. Consideraremos
 outlier cualquier dato que esté 1.5 * IQR por debajo o por encima de los cuantiles
@@ -92,11 +94,12 @@ for (col in names(df_variables)) {
 ```{r}
 boxplot(select(df, -c(Time, Class, Amount)))
 ```
+
 ```{r}
 describe(select(df, -c(Time, Class, Amount)), fast=TRUE)
 ```
 
-Se aprecia que, tras la limpieza de datos, ya no existen valores mínimos y
+Tras la limpieza de datos, ya no existen valores mínimos y
 máximos tan alejados de la media.
 
 El dataset sigue siendo grande y seguramente no todos los datos aporten información 
@@ -107,15 +110,74 @@ En primer lugar, vamos a comprobar qué correlaciones hay entre variables.
 heatmaply_cor(x = cor(df), xlab = "Features", ylab = "Features")
 ```
 
+No hay fuertes correlaciones entre las variables, si acaso entre V20-amount,
+V27-V28, V6-V8, V21-V22 o V2-V7. Igualmente no nos da demasiadas pistas sobre qué
+variables afectan más o menos a la clasificación.
+
+¿Es útil la variable time o podemos prescindir de ella? Para saberlo vamos a graficar
+por separado las transacciones fraudulentas de las que no:
+
+```{r}
+fraudulent_data <- filter(df, Class == 1)
+
+fraudulent_data %>% ggplot(aes(x = Time)) +
+  geom_histogram(bins = 100) +
+  labs(x = 'Time', y = 'Transactions')
+```
+
+```{r}
+non_fraudulent_data <- filter(df, Class == 0)
+
+non_fraudulent_data %>% ggplot(aes(x = Time)) +
+  geom_histogram(bins = 250) +
+  labs(x = 'Time', y = 'Transactions')
+```
+
+En los gráficos se interpreta una clara estacionalidad en las transacciones no
+fraudulentas, sin embargo, en las no fraudulentas no vemos ningún dato relevante.
+El objetivo del modelo a desarrollar es la previsión de transacciones no fraudulentas
+por lo que podemos prescindir de esta variable.
+
+```{r}
+df <- select(df, -c(Time))
+```
+
+¿Es relevante la variable Amount? Procedemos a graficarla también:
+
+```{r}
+ggplot(df, aes(x = factor(Class), y = Amount)) + 
+        geom_boxplot() + 
+        labs(x = 'Class', y = 'Amount')
+```
+Al parecer las transacciones fraudulentas se concentran en cantidades más pequeñas.
+Tiene sentido ya que hay menos controles en transacciones con menor cantidad de 
+dinero. Esta variable la mantendremos en el modelo ya que nos da información útil.
 
 
 Vamos a ver la distribución de los datos según la clase:
 
 ```{r}
-
+table(df2$Class)
 ```
 
-Dividamos el dataset en 70% para el train y el 30% para el test. Dado que es un dataset grande usaremos la función fread de la librería data.table, para la division usaremos la función sample.split de la libreria catools.
+
+```{r}
+prop.table(table(df$Class))
+```
+
+Claramente hay una gran disparidad entre el número de datos de cada clase. Se trata
+de un problema no balanceado, en el que si no aplicamos ninguna técnica para paliarlo
+podemos llegar a obtener un clasificador que a pesar de dar muy buenos resultados
+de accuracy, esté dando muy malos resultados a la hora de predecir transacciones
+fraudulentas. Habrá que aplicar técnicas de oversampling o undersampling para solucionarlo.
+
+
+
+
+
+Dividamos el dataset en 70% para el train y el 30% para el test. Dado que es un
+dataset grande usaremos la función fread de la librería data.table, para la division 
+usaremos la función sample.split de la libreria catools.
 
 ```{r}
 sample <- sample.split(df$Class, SplitRatio = 0.7)

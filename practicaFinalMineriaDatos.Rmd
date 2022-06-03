@@ -11,6 +11,7 @@ library(dplyr)
 library(psych)
 library(heatmaply)
 library(ggplot2)
+library(caret)
 ```
 
 Leemos y guardamos el dataset. Echamos un vistazo a las columnas para ver qué tipo
@@ -157,7 +158,7 @@ dinero. Esta variable la mantendremos en el modelo ya que nos da información ú
 Vamos a ver la distribución de los datos según la clase:
 
 ```{r}
-table(df2$Class)
+table(df$Class)
 ```
 
 
@@ -210,21 +211,36 @@ table(df$Class)
 new_train = BLSMOTE(data.frame(X_train),data.frame(Y_train), K=5,C=5)
 #X_train_new = select(new_df,-Class)
 #Y_train_new = select(new_df,Class)
-new_train$data$class <- as.numeric(new_train$data$class)
+new_train$data$class <- as.integer(new_train$data$class)
 model <- glm(class~., data = new_train$data, family = binomial())
-table(new_train$data$class)
-table(df$Class)
-#summary(model)
+summary(model)
 ```
-```{r}
-library('caret')
-Y_test_pred <- round(predict(model, newdata = X_test, type = "response") , 0)
-print(Y_test_pred)
-confusionMatrix(as.factor(Y_test), as.factor(Y_test_pred))
-```
+
+
 ```{r}
 
+Y_test_pred <- round(predict(model, test, type = "response"))
+
+
+table(test$Class)
+
+
+
+class(Y_test_pred)
+
+
+confusionMatrix(
+  factor(test$Class, levels = 0:1),
+  factor(Y_test_pred, levels = 0:1)
+)
 ```
+
+
+```{r}
+table(Y_test_pred)
+
+```
+
 
 ```{r}
 

@@ -12,6 +12,7 @@ library(psych)
 library(heatmaply)
 library(ggplot2)
 library(caret)
+library(unbalanced)
 ```
 
 Leemos y guardamos el dataset. Echamos un vistazo a las columnas para ver qué tipo
@@ -214,14 +215,69 @@ Y_train <- select(train, Class)
 Y_test <- select(test, Class)
 ```
 
-### Ejemplo 1: Oversampling (Smote) + Regresión logística
+A continuación, vamos a probar varias combinaciones de oversampling/undersampling
+y distintos modelos de datos. En cada una de las combinaciones se mostrará la matriz
+de confusión. Para evaluar cuál es el mejor de los modelos usaremos el F1-Score, ya
+que combina Recall y precisión, que son las dos medidas que miden el porcentaje de
+datos bien clasificados como la clase minoritaria.
+
+El Recall representa las transacciones fraudulentas que detectamos respecto a las transacciones
+fraudulentas existentes.
+
+La Precisión representa el porcentaje de las transacciones que detectamos como fraudulentas 
+que realmente lo son.
+
+Como dijimos anteriormente, no podemos fijarnos en métricas como el accuracy ya que
+tienen en cuenta el porcentaje de aciertos de la clase mayoritaria.
+
+### Ejemplo 1: Sin oversampling/undersampling Regresión logística
+
+```{r}
+model <- glm(Class~., data = train, family = binomial())
+Y_test_pred <- round(predict(model, test, type = "response"))
+
+confusionMatrix(
+  factor(test$Class, levels = 0:1),
+  factor(Y_test_pred, levels = 0:1),
+  positive = "1",
+  mode = "everything"
+)
+```
+
+Obtenemos un F1-score de 0.65
+
+
+### Ejemplo 2: 
+```{r}
+train_smote <- SMOTE(as.data.frame(X_train), as.data.frame(Y_train), K=2, dup_size=5)
+train_smote$data$class <- as.integer(train_smote$data$class)
+
+model <- glm(class~., data = train_smote$data, family = binomial())
+Y_test_pred <- round(predict(model, test, type = "response"))
+
+confusionMatrix(
+  factor(test$Class, levels = 0:1),
+  factor(Y_test_pred, levels = 0:1),
+  positive = "1",
+  mode = "everything"
+)
+
+```
+
+Se han probado las siguientes combinaciones:
+
+K: 2, 5, 10
+dup_size: 1, 3, 5, 10, 20, 100, 500
+
+La mejor combinación es k=2 y dup_size=5 con un F1_Score de 0.78
+
+### Ejemplo 2: Undersampling + Regresión logística
 
 Obtención de nuevas instancias de la clase minoritaria mediante BLSMOTE:
 
 ```{r}
-new_train <- BLSMOTE(data.frame(X_train), data.frame(Y_train), K=5, C=5)
-new_train$data$class <- as.integer(new_train$data$class)
-table(new_train$data$class)
+down_train <- downSample(x = X_train, y = Y_train)
+
 ```
 Entrenamiento del modelo y predicción de datos. Se muestra la matriz de confusión
 
@@ -234,6 +290,17 @@ confusionMatrix(
   factor(test$Class, levels = 0:1),
   factor(Y_test_pred, levels = 0:1)
 )
+```
+Vamos a echar un vistazo a la curva ROC
+
+```{r}
+library(Deducer)
+rocplot(model)
+
+
+g <- roc(admit ~ prob, data = mydata)
+plot(g) 
+
 ```
 
 

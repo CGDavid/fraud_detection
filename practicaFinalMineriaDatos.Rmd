@@ -188,6 +188,15 @@ Al parecer las transacciones fraudulentas se concentran en cantidades más peque
 Tiene sentido ya que hay menos controles en transacciones con menor cantidad de 
 dinero. Esta variable la mantendremos en el modelo ya que sí proporciona información útil.
 
+Para poder usarla en el modelo tenemos que normalizarla o si no el modelo la sobreponderará
+respecto al resto de variables. Normalizamos el dataframe a media 0 y desviación
+estándar 1:
+
+```{r}
+df <- scale(df)
+df <- df %>% mutate_at(c("Amount"), ~(scale(.) %>% as.vector))
+```
+
 ## Creación del modelo
 
 Se divide el dataset en 70% para el conjunto de datos de entrenamiento y el 30% 

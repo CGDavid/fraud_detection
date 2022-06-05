@@ -194,7 +194,6 @@ respecto al resto de variables. Normalizamos el dataframe a media 0 y desviació
 estándar 1:
 
 ```{r}
-df <- scale(df)
 df <- df %>% mutate_at(c("Amount"), ~(scale(.) %>% as.vector))
 ```
 
@@ -230,85 +229,103 @@ que realmente lo son.
 Como dijimos anteriormente, no podemos fijarnos en métricas como el accuracy ya que
 tienen en cuenta el porcentaje de aciertos de la clase mayoritaria.
 
+En primer lugar obtendremos haremos el oversampling y undersampling sobre el dataset:
+
+```{r}
+# Oversampling - Smote
+train_smote <- ubSMOTE(X_train, factor(Y_train$Class, levels = 0:1), k = 2, perc.over = 200, perc.under = 0)
+train_smote <- rbind(train, data.frame(train_smote$X, Class = train_smote$Y))
+train_smote$Class <- as.integer(train_smote$Class)
+
+# Undersampling - Tomek Links
+train_tomek <- ubTomek(X_train, factor(Y_train$Class, levels = 0:1), verbose = TRUE)
+train_tomek <- cbind(train_tomek$X, train_tomek$Y)
+train_tomek$Class <- factor(train_tomek$`train_tomek$Y`, levels = 0:1)
+train_tomek <- select(train_tomek, -c(`train_tomek$Y`))
+
+# Undersampling - ubUnder
+train_ubUnder <- ubUnder(X_train, factor(Y_train$Class, levels = 0:1), perc = 50, method = "percPos", w = NULL)
+train_ubUnder <- cbind(train_ubUnder$X, train_ubUnder$Y)
+train_ubUnder$Class <- factor(train_ubUnder$`train_ubUnder$Y`, levels = 0:1)
+train_ubUnder <- select(train_ubUnder, -c(`train_ubUnder$Y`))
+```
+
+
 ### Ejemplo 1: Sin oversampling/undersampling Regresión logística
 
 ```{r}
 model <- glm(Class~., data = train, family = binomial())
-Y_test_pred <- round(predict(model, test, type = "response"))
+Y_pred <- predict(model, test, type = "response") %>% round()
 
 confusionMatrix(
   factor(test$Class, levels = 0:1),
-  factor(Y_test_pred, levels = 0:1),
+  factor(Y_pred, levels = 0:1),
   positive = "1",
   mode = "everything"
 )
 ```
 
-Obtenemos un F1-score de 0.65
+Obtenemos un F1-score de 0.76
 
 
-### Ejemplo 2: 
+### Ejemplo 2: SMOTE + Regresión logística
+
+
 ```{r}
-train_smote <- SMOTE(as.data.frame(X_train), as.data.frame(Y_train), K=2, dup_size=5)
-train_smote$data$class <- as.integer(train_smote$data$class)
-
-model <- glm(class~., data = train_smote$data, family = binomial())
-Y_test_pred <- round(predict(model, test, type = "response"))
+model <- glm(Class~., data = train_smote, family = binomial())
+Y_pred <- predict(model, test, type = "response") %>% round()
 
 confusionMatrix(
   factor(test$Class, levels = 0:1),
-  factor(Y_test_pred, levels = 0:1),
+  factor(Y_pred, levels = 0:1),
   positive = "1",
   mode = "everything"
 )
-
 ```
 
 Se han probado las siguientes combinaciones:
 
 K: 2, 5, 10
-dup_size: 1, 3, 5, 10, 20, 100, 500
+perc.over: 100, 200, 500, 1000, 5000, 10000
 
-La mejor combinación es k=2 y dup_size=5 con un F1_Score de 0.78
+La mejor combinación es k=2 y perc.over=5 con un F1_Score de 0,79. Este resultado es
+ligeramente mejor que el obtenido sin técnicas de oversampling/undersampling.
 
-### Ejemplo 2: Undersampling + Regresión logística
-
-Obtención de nuevas instancias de la clase minoritaria mediante BLSMOTE:
-
-```{r}
-down_train <- downSample(x = X_train, y = Y_train)
-
-```
-Entrenamiento del modelo y predicción de datos. Se muestra la matriz de confusión
-
+### Ejemplo 3: Undersampling (Tomek Links) + Regresión logística
 
 ```{r}
-model <- glm(class~., data = new_train$data, family = binomial())
-Y_test_pred <- round(predict(model, test, type = "response"))
+model <- glm(Class~., data = train_tomek, family = binomial())
+Y_pred <- predict(model, test, type = "response") %>% round()
 
 confusionMatrix(
   factor(test$Class, levels = 0:1),
-  factor(Y_test_pred, levels = 0:1)
+  factor(Y_pred, levels = 0:1),
+  positive = "1",
+  mode = "everything"
 )
+
 ```
-Vamos a echar un vistazo a la curva ROC
+
+Tomek solo está eliminando un 0.05% de elementos del dataset, por lo que no ayuda
+demasiado a mejorar los resultados. Probamos con uBUnder
+para ver si mejoramos el resultado con otra técnica de undersampling.
 
 ```{r}
-library(Deducer)
-rocplot(model)
+model <- glm(Class~., data = train_ubUnder, family = binomial())
+Y_pred <- predict(model, test, type = "response") %>% round()
 
-
-g <- roc(admit ~ prob, data = mydata)
-plot(g) 
-
-```
-
-
-```{r}
-table(Y_test_pred)
+confusionMatrix(
+  factor(test$Class, levels = 0:1),
+  factor(Y_pred, levels = 0:1),
+  positive = "1",
+  mode = "everything"
+)
 
 ```
+Se observa que es bastante peor el resultado obtenido por ubUnder. Descartaremos
+este algoritmo en las próximas pruebas.
 
+### Ejemplo 4: 
 
 ```{r}
 

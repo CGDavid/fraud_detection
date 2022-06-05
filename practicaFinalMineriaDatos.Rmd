@@ -15,6 +15,7 @@ library(caret)
 library(unbalanced)
 library(rpart)
 library(rpart.plot)
+library(costsensitive)
 ```
 
 Leemos y guardamos el dataset. Echamos un vistazo a las columnas para ver qué tipo
@@ -341,6 +342,10 @@ F-Score: 0.78
 ### Ejemplo 5: SMOTE + Decision Tree
 
 ```{r}
+train_smote <- ubSMOTE(X_train, factor(Y_train$Class, levels = 0:1), k = 2, perc.over = 500, perc.under = 0)
+train_smote <- rbind(train, data.frame(train_smote$X, Class = train_smote$Y))
+train_smote$Class <- as.integer(train_smote$Class)
+
 tree <- rpart(Class ~ ., data = train_smote)
 Y_pred <- predict(tree, newdata = test) %>% round() %>% as.integer()
 
@@ -373,3 +378,52 @@ confusionMatrix(
 ```
 
 Con un valor de 0.81, Tomek links + Decision tree es el mejor resultado obtenido.
+
+### Ejemplo 6: Tomek Links + Decision Tree
+
+```{r}
+tree <- rpart(Class ~ ., data = train_tomek)
+Y_pred <- predict(tree, newdata = test)
+
+pred_aux <- rep("0", dim(Y_pred)[1])
+pred_aux[Y_pred[,2] >= 0.5] = "1"
+Y_pred <- as.factor(pred_aux)
+
+confusionMatrix(
+  factor(test$Class, levels = 0:1),
+  factor(Y_pred, levels = 0:1),
+  positive = "1",
+  mode = "everything"
+)
+```
+
+### Ejemplo 7: Cost sensitive + Logistic regresion
+
+```{r}
+# Ponderamos los pesos de manera que las clases minoritarias valgan 100 veces
+# más que las mayoritarias
+weights <- Y_train %>% 
+  mutate(weight = case_when(
+    Class == 0 ~ 1, 
+    Class == 1 ~ 100
+  ))
+
+weights <- select(weights, -c(Class))
+
+classifier <- caret::train
+model <- cost.proportionate.classifier(X_train, Y_train, weights, classifier)
+
+predict(model, X_test, aggregation = "raw", type = "raw")
+predict(model, X, aggregation = "weighted", type = "prob")
+
+
+Y_pred <- predict(model, test, type = "response") %>% round() %>% as.integer()
+
+confusionMatrix(
+  factor(test$Class, levels = 0:1),
+  factor(Y_pred, levels = 0:1),
+  positive = "1",
+  mode = "everything"
+)
+
+```

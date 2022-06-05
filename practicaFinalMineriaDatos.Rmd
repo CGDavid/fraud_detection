@@ -13,6 +13,8 @@ library(heatmaply)
 library(ggplot2)
 library(caret)
 library(unbalanced)
+library(rpart)
+library(rpart.plot)
 ```
 
 Leemos y guardamos el dataset. Echamos un vistazo a las columnas para ver qué tipo
@@ -255,7 +257,7 @@ train_ubUnder <- select(train_ubUnder, -c(`train_ubUnder$Y`))
 
 ```{r}
 model <- glm(Class~., data = train, family = binomial())
-Y_pred <- predict(model, test, type = "response") %>% round()
+Y_pred <- predict(model, test, type = "response") %>% round() %>% as.integer()
 
 confusionMatrix(
   factor(test$Class, levels = 0:1),
@@ -265,15 +267,13 @@ confusionMatrix(
 )
 ```
 
-Obtenemos un F1-score de 0.76
-
+Obtenemos un F1-score de 0.75
 
 ### Ejemplo 2: SMOTE + Regresión logística
 
-
 ```{r}
 model <- glm(Class~., data = train_smote, family = binomial())
-Y_pred <- predict(model, test, type = "response") %>% round()
+Y_pred <- predict(model, test, type = "response") %>% round() %>% as.integer()
 
 confusionMatrix(
   factor(test$Class, levels = 0:1),
@@ -288,14 +288,14 @@ Se han probado las siguientes combinaciones:
 K: 2, 5, 10
 perc.over: 100, 200, 500, 1000, 5000, 10000
 
-La mejor combinación es k=2 y perc.over=5 con un F1_Score de 0,79. Este resultado es
+La mejor combinación es k=2 y perc.over=5 con un F1_Score de 0,80. Este resultado es
 ligeramente mejor que el obtenido sin técnicas de oversampling/undersampling.
 
 ### Ejemplo 3: Undersampling (Tomek Links) + Regresión logística
 
 ```{r}
 model <- glm(Class~., data = train_tomek, family = binomial())
-Y_pred <- predict(model, test, type = "response") %>% round()
+Y_pred <- predict(model, test, type = "response") %>% round() %>% as.integer()
 
 confusionMatrix(
   factor(test$Class, levels = 0:1),
@@ -303,16 +303,15 @@ confusionMatrix(
   positive = "1",
   mode = "everything"
 )
-
 ```
 
-Tomek solo está eliminando un 0.05% de elementos del dataset, por lo que no ayuda
+Tomek solo está eliminando un 0.04% de elementos del dataset, por lo que no ayuda
 demasiado a mejorar los resultados. Probamos con uBUnder
 para ver si mejoramos el resultado con otra técnica de undersampling.
 
 ```{r}
 model <- glm(Class~., data = train_ubUnder, family = binomial())
-Y_pred <- predict(model, test, type = "response") %>% round()
+Y_pred <- predict(model, test, type = "response") %>% round() %>% as.integer()
 
 confusionMatrix(
   factor(test$Class, levels = 0:1),
@@ -320,14 +319,59 @@ confusionMatrix(
   positive = "1",
   mode = "everything"
 )
-
 ```
 Se observa que es bastante peor el resultado obtenido por ubUnder. Descartaremos
 este algoritmo en las próximas pruebas.
 
-### Ejemplo 4: 
+### Ejemplo 4: NO oversampling/undersampling + Decision Tree
 
 ```{r}
+tree <- rpart(Class ~ ., data = train)
+Y_pred <- predict(tree, newdata = test) %>% round() %>% as.integer()
 
+confusionMatrix(
+  factor(test$Class, levels = 0:1),
+  factor(Y_pred, levels = 0:1),
+  positive = "1",
+  mode = "everything"
+)
+```
+F-Score: 0.78
+
+### Ejemplo 5: SMOTE + Decision Tree
+
+```{r}
+tree <- rpart(Class ~ ., data = train_smote)
+Y_pred <- predict(tree, newdata = test) %>% round() %>% as.integer()
+
+confusionMatrix(
+  factor(test$Class, levels = 0:1),
+  factor(Y_pred, levels = 0:1),
+  positive = "1",
+  mode = "everything"
+)
 ```
 
+Obtenemos un F-Score superior al obtenido con el algoritmo de la regresión logística: 0.80
+
+### Ejemplo 6: Tomek Links + Decision Tree
+
+```{r}
+tree <- rpart(Class ~ ., data = train_tomek)
+Y_pred <- predict(tree, newdata = test)
+
+pred_aux <- rep("0", dim(Y_pred)[1])
+pred_aux[Y_pred[,2] >= 0.5] = "1"
+Y_pred <- as.factor(pred_aux)
+
+table(pred_qual)
+
+confusionMatrix(
+  factor(test$Class, levels = 0:1),
+  factor(Y_pred, levels = 0:1),
+  positive = "1",
+  mode = "everything"
+)
+```
+
+Con un valor de 0.81, Tomek links + Decision tree es el mejor resultado obtenido.

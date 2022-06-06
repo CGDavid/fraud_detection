@@ -1,6 +1,24 @@
-El análisis exploratorio comienza investigando el significado y la naturaleza de 
-las variables que nos proporciona el datase. Distinguiremos entre qué variables 
-son relevantes y cuáles no para la clasificación de los datos.
+---
+editor_options:
+  markdown:
+    wrap: 72
+output:
+  html_document:
+    df_print: paged
+---
+
+Alumnos:
+
+Xavier Femenias
+
+David Carretero
+
+## Abordando datasets no balanceados.
+
+Se dice que un dataset esta desbalanceado cuando este consta de dos clases  y una de ellas tiene muchas mas muestras que la otra. Se suele dar el caso que el coste de clasificar mal muestras del grupo minoritario tiene un coste mucho mayor que clasificar mal las del mayoritario, como es el caso de la investigación que sigue: las transacciones con tarjetas de credito fraudulentas. En estos casos, medidas como el Accuracy carecen de sentido por que de nada sirve tener un accuracy del 95% si tenemos muchas clases positivas mal clasificadas.
+
+Empecemos con un análisis exploratorio, el cual tiene como objetivo investigar el significado, naturaleza y relación de las variables que nos proporciona el dataset. Distinguiremos entre qué
+variables son relevantes y cuáles no para la clasificación de los datos. Primero de todo cargamos las librerias necesarias.
 
 ```{r}
 options(warn=-1)
@@ -15,11 +33,10 @@ library(caret)
 library(unbalanced)
 library(rpart)
 library(rpart.plot)
-library(costsensitive)
 ```
 
-Leemos y guardamos el dataset. Echamos un vistazo a las columnas para ver qué tipo
-de datos tenemos.
+Leemos y guardamos el dataset. Echamos un vistazo a las columnas para
+ver qué tipo de datos tenemos.
 
 ```{r}
 df <- read.csv("creditcard.csv")
@@ -30,14 +47,16 @@ head(df, 10)
 print(paste("Tenemos un dataset con un total de", nrow(df), "datos"))
 ```
 
-Podemos comprobar que todas las columnas menos Time y Amount están ofuscadas. Esto
-es debido a que se trata de las componentes principales obtenidas de la aplicación
-previa de la técnica de reducción de dimensionalidad PCA. Debido a esto, no podremos 
-usar el sentido común en una primera instancia para elegir o descartar las variables
-que utilizará nuestro modelo, ni tampoco para crear nuevas variables a partir de 
-las originales.
+Podemos comprobar que todas las columnas menos Time y Amount están
+ofuscadas. Esto es debido a que se trata de las componentes principales
+obtenidas de la aplicación previa de la técnica de reducción de
+dimensionalidad PCA. Debido a esto, no podremos usar el sentido común en
+una primera instancia para elegir o descartar las variables que
+utilizará nuestro modelo, ni tampoco para crear nuevas variables a
+partir de las originales.
 
-Vamos a revisar la integridad de los datos. Empezaremos buscando campos vacíos.
+Vamos a revisar la integridad de los datos. Empezaremos buscando campos
+vacíos.
 
 ```{r}
 na_cols <- sapply(df, function(x) any(is.na(x) | x == '' ))
@@ -51,8 +70,8 @@ nan_cols <- sapply(df, function(x) any(is.nan(x)))
 print(nan_cols)
 ```
 
-Todos los datos son correctos por lo que no hay que hacer un preprocesado
-para limpiarlos.
+Todos los datos son correctos por lo que no hay que hacer un
+preprocesado para limpiarlos.
 
 Se revisan a continuación las características de cada variable:
 
@@ -60,11 +79,12 @@ Se revisan a continuación las características de cada variable:
 describe(select(df, -c(Time, Class)), fast=TRUE)
 ```
 
-Se observa que todas las variables son numéricas, con valores decimales y valores tanto 
-positivos menos negativos. Todas las variables (menos Amount) tienen media 0, ya
-que los valores han sido previamente normalizados. A pesar de ello, se vé en las 
-columnas "min" y "max" datos muy por encima del valor medio, con diferencias muy 
-superiores a la desviación estándar.
+Se observa que todas las variables son numéricas, con valores decimales
+y valores tanto positivos menos negativos. Todas las variables (menos
+Amount) tienen media 0, ya que los valores han sido previamente
+normalizados. A pesar de ello, se vé en las columnas "min" y "max" datos
+muy por encima del valor medio, con diferencias muy superiores a la
+desviación estándar.
 
 Vamos a ver la distribución de los datos según la clase:
 
@@ -72,57 +92,57 @@ Vamos a ver la distribución de los datos según la clase:
 table(df$Class)
 ```
 
-
 ```{r}
 prop.table(table(df$Class))
 ```
 
-Claramente hay una gran disparidad entre el número de datos de cada clase. Se trata
-de un problema no balanceado, en el que si no aplicamos ninguna técnica para paliarlo
-podemos llegar a obtener un clasificador que a pesar de dar muy buenos resultados
-de accuracy, esté dando muy malos resultados a la hora de predecir transacciones
-fraudulentas. Habrá que aplicar técnicas de oversampling o undersampling para solucionarlo.
+Claramente hay una gran disparidad entre el número de datos de cada
+clase. Se trata de un problema no balanceado, en el que si no aplicamos
+ninguna técnica para paliarlo podemos llegar a obtener un clasificador
+que a pesar de dar muy buenos resultados de accuracy, esté dando muy
+malos resultados a la hora de predecir transacciones fraudulentas. Habrá
+que aplicar técnicas de oversampling o undersampling para solucionarlo.
 
-A continuación, se visualiza mediante un boxplot los outliers de las diferentes variables:
+A continuación, se visualiza mediante un boxplot los outliers de las
+diferentes variables:
 
 ```{r}
 boxplot(select(df, -c(Time, Class, Amount)))
 ```
 
-Efectivamente, se comprueba que hay outliers en varias variables. Vamos a ver si
-podemos eliminarlos para evitar que afecten negativamente a nuestro modelo. Consideraremos
-outlier cualquier dato que esté 1.5 * IQR por debajo o por encima de los cuantiles
-inferior o superior respectivamente. Por no ser demasiado estrictos, usaremos el 
-percentil 5 y 95:
+Efectivamente, se comprueba que hay outliers en varias variables. Vamos
+a ver si podemos eliminarlos para evitar que afecten negativamente a
+nuestro modelo. Consideraremos outlier cualquier dato que esté 1.5 \*
+IQR por debajo o por encima de los cuantiles inferior o superior
+respectivamente. Por no ser demasiado estrictos, usaremos el percentil 5
+y 95:
 
 ```{r}
 outliers <- function(data) {
   Q1 <- quantile(data, probs=.05)
   Q3 <- quantile(data, probs=.95)
   IQR = Q3-Q1
-
   Lower <- Q1 - 1.5 * IQR
   Upper <- Q3 + 1.5 * IQR 
   
   data < Lower | data > Upper
 }
-
 df_without_outliers <- df
 df_variables <- select(df_without_outliers, -c(Time, Class, Amount))
-
 for (col in names(df_variables)) {
   df_without_outliers <- df[!outliers(df[[col]]),]
 }
-
 boxplot(select(df_without_outliers, -c(Time, Class, Amount)))
 ```
+
 ```{r}
 describe(select(df_without_outliers, -c(Time, Class)), fast=TRUE)
 ```
 
-Tras la limpieza de datos, ya no existen valores mínimos y máximos tan alejados 
-de la media. Vamos a comprobar si ha afectado demasiado a la clase minoritaria, 
-ya que no queremos perder estos datos al ser tan escasos:
+Tras la limpieza de datos, ya no existen valores mínimos y máximos tan
+alejados de la media. Vamos a comprobar si ha afectado demasiado a la
+clase minoritaria, ya que no queremos perder estos datos al ser tan
+escasos:
 
 ```{r}
 prop.table(table(df_without_outliers$Class))
@@ -131,51 +151,54 @@ prop.table(table(df_without_outliers$Class))
 ```{r}
 prop.table(table(df$Class))
 ```
-Como la proporción se mantiene casi intacta, es factible la eliminación. Se ha probado
-con un rango más acotado de outliers pero se eliminan demasiadas instancias de la
-clase minoritaria.
+
+Como la proporción se mantiene casi intacta, es factible la eliminación.
+Se ha probado con un rango más acotado de outliers pero se eliminan
+demasiadas instancias de la clase minoritaria.
 
 ```{r}
 df <- df_without_outliers
 ```
 
-El dataset sigue siendo grande a pesar de la eliminación de outliers. Seguramente 
-no todos los datos aporten información al modelo que usemos para predecir valores, 
-por lo que vamos a intentar acortarlos. En primer lugar, vamos a comprobar qué 
-correlaciones hay entre variables.
+El dataset sigue siendo grande a pesar de la eliminación de outliers.
+Seguramente no todos los datos aporten información al modelo que usemos
+para predecir valores, por lo que vamos a intentar acortarlos. En primer
+lugar, vamos a comprobar qué correlaciones hay entre variables.
 
 ```{r}
 heatmaply_cor(x = cor(df), xlab = "Features", ylab = "Features")
 ```
 
-No hay fuertes correlaciones entre las variables, si acaso entre V20-amount,
-V27-V28, V6-V8, V21-V22 o V2-V7. Igualmente no nos da demasiadas pistas sobre qué
-variables afectan más o menos a la clasificación.
+No hay fuertes correlaciones entre las variables, si acaso entre
+V20-amount, V27-V28, V6-V8, V21-V22 o V2-V7. Igualmente no nos da
+demasiadas pistas sobre qué variables afectan más o menos a la
+clasificación.
 
-¿Es útil la variable time o podemos prescindir de ella? Para saberlo vamos a graficar
-por separado las transacciones fraudulentas de las que no:
+¿Es útil la variable time o podemos prescindir de ella? Para saberlo
+vamos a graficar por separado las transacciones fraudulentas de las que
+no:
 
 ```{r}
 non_fraudulent_data <- filter(df, Class == 0)
-
 non_fraudulent_data %>% ggplot(aes(x = Time)) +
   geom_histogram(bins = 250) +
   labs(x = 'Time', y = 'Transactions')
 ```
 
-Se interpreta una clara estacionalidad en las transacciones no fraudulentas. Comprobemos
-las fraudulentas que son las que nos interesa poder clasificar:
+Se interpreta una clara estacionalidad en las transacciones no
+fraudulentas. Comprobemos las fraudulentas que son las que nos interesa
+poder clasificar:
 
 ```{r}
 fraudulent_data <- filter(df, Class == 1)
-
 fraudulent_data %>% ggplot(aes(x = Time)) +
   geom_histogram(bins = 100) +
   labs(x = 'Time', y = 'Transactions')
 ```
 
-No se vé ningún patrón relevante que pueda dar información al modelo sobre cuándo
-una transacción es fraudulenta, por lo que podemos prescindir de esta variable.
+No se vé ningún patrón relevante que pueda dar información al modelo
+sobre cuándo una transacción es fraudulenta, por lo que podemos
+prescindir de esta variable.
 
 ```{r}
 df <- select(df, -c(Time))
@@ -188,13 +211,33 @@ ggplot(df, aes(x = factor(Class), y = Amount)) +
         geom_boxplot() + 
         labs(x = 'Class', y = 'Amount')
 ```
-Al parecer las transacciones fraudulentas se concentran en cantidades más pequeñas.
-Tiene sentido ya que hay menos controles en transacciones con menor cantidad de 
-dinero. Esta variable la mantendremos en el modelo ya que sí proporciona información útil.
 
-Para poder usarla en el modelo tenemos que normalizarla o si no el modelo la sobreponderará
-respecto al resto de variables. Normalizamos el dataframe a media 0 y desviación
-estándar 1:
+Al parecer las transacciones fraudulentas se concentran en cantidades
+más pequeñas. Tiene sentido ya que hay menos controles en transacciones
+con menor cantidad de dinero. Esta variable la mantendremos en el modelo
+ya que sí proporciona información útil.
+
+Para una posterior clasificación sensible al coste, vamos a calcular la
+media de las transacciones fraudulentas,como coste de clasificar una
+transacción fraudulenta como una normal. Si se clasifica mal una
+transacción legal como fraudulenta, establezcamoslo como un 3% de la
+media de las transacciones legales, se podría tomar como la comisión de la transacción.
+
+Hay que tener en cuenta que debemos normalizar la variable amount para
+poder usarla en el modelo, asi que antes de eso vamos a calcular los
+costes mencionados. Seleccionamos una muestra aleatoria del 70% del
+dataset para el posterior entrenamiento:
+
+```{r}
+sample <- sample.split(df$Class, SplitRatio = 0.7)
+train  <- subset(df, sample == TRUE)
+#coste de clasificar una transacción fraudulenta como normal
+cost1_2 = mean(train[train$Class == 1,]$Amount)
+#coste de clasificar una transacción normal como una fraudulenta
+cost2_1 = 0.03*mean(train[train$Class == 0,]$Amount)
+print("Coste de clasificar una transacción fraudulenta como una normal",str(cost1_2))
+print("Coste de clasificar una transacción normal como una fraudulenta",str(cost2_1))
+```
 
 ```{r}
 df <- df %>% mutate_at(c("Amount"), ~(scale(.) %>% as.vector))
@@ -202,50 +245,50 @@ df <- df %>% mutate_at(c("Amount"), ~(scale(.) %>% as.vector))
 
 ## Creación del modelo
 
-Se divide el dataset en 70% para el conjunto de datos de entrenamiento y el 30% 
-para el de test:
+Continuamos dividiendo el dataset en conjunto de test y separamos la
+variable independiente de las dependientes.
 
 ```{r}
-sample <- sample.split(df$Class, SplitRatio = 0.7)
-train  <- subset(df, sample == TRUE)
 test   <- subset(df, sample == FALSE)
-
 X_train  <- select(train, -Class)
 X_test   <- select(test, -Class)
-
 Y_train <- select(train, Class)
 Y_test <- select(test, Class)
 ```
 
-A continuación, vamos a probar varias combinaciones de oversampling/undersampling
-y distintos modelos de datos. En cada una de las combinaciones se mostrará la matriz
-de confusión. Para evaluar cuál es el mejor de los modelos usaremos el F1-Score, ya
-que combina Recall y precisión, que son las dos medidas que miden el porcentaje de
-datos bien clasificados como la clase minoritaria.
+A continuación, vamos a probar varias combinaciones de
+oversampling/undersampling y distintos modelos de datos, asi como
+distintas combinaciones de parámetros (se citará la combinación que
+mejor resultado nos ha arrojado, aunque debido a la aleatoriedad del
+muestreo esto puede cambiar). En cada una de las combinaciones se
+mostrará la matriz de confusión. Para evaluar cuál es el mejor de los
+modelos usaremos el F1-Score, ya que combina Recall y precisión, que son
+las dos medidas que miden el porcentaje de datos bien clasificados como
+la clase minoritaria.
 
-El Recall representa las transacciones fraudulentas que detectamos respecto a las transacciones
-fraudulentas existentes.
+El Recall representa las transacciones fraudulentas que detectamos
+respecto a las transacciones fraudulentas existentes.
 
-La Precisión representa el porcentaje de las transacciones que detectamos como fraudulentas 
-que realmente lo son.
+La Precisión representa el porcentaje de las transacciones que
+detectamos como fraudulentas que realmente lo son.
 
-Como dijimos anteriormente, no podemos fijarnos en métricas como el accuracy ya que
-tienen en cuenta el porcentaje de aciertos de la clase mayoritaria.
+Como dijimos anteriormente, no podemos fijarnos en métricas como el
+accuracy ya que tienen en cuenta el porcentaje de aciertos de la clase
+mayoritaria.
 
-En primer lugar obtendremos haremos el oversampling y undersampling sobre el dataset:
+En primer lugar obtendremos haremos el oversampling y undersampling
+sobre el dataset:
 
 ```{r}
 # Oversampling - Smote
 train_smote <- ubSMOTE(X_train, factor(Y_train$Class, levels = 0:1), k = 2, perc.over = 200, perc.under = 0)
 train_smote <- rbind(train, data.frame(train_smote$X, Class = train_smote$Y))
 train_smote$Class <- as.integer(train_smote$Class)
-
 # Undersampling - Tomek Links
 train_tomek <- ubTomek(X_train, factor(Y_train$Class, levels = 0:1), verbose = TRUE)
 train_tomek <- cbind(train_tomek$X, train_tomek$Y)
 train_tomek$Class <- factor(train_tomek$`train_tomek$Y`, levels = 0:1)
 train_tomek <- select(train_tomek, -c(`train_tomek$Y`))
-
 # Undersampling - ubUnder
 train_ubUnder <- ubUnder(X_train, factor(Y_train$Class, levels = 0:1), perc = 50, method = "percPos", w = NULL)
 train_ubUnder <- cbind(train_ubUnder$X, train_ubUnder$Y)
@@ -253,13 +296,11 @@ train_ubUnder$Class <- factor(train_ubUnder$`train_ubUnder$Y`, levels = 0:1)
 train_ubUnder <- select(train_ubUnder, -c(`train_ubUnder$Y`))
 ```
 
-
 ### Ejemplo 1: Sin oversampling/undersampling Regresión logística
 
 ```{r}
 model <- glm(Class~., data = train, family = binomial())
 Y_pred <- predict(model, test, type = "response") %>% round() %>% as.integer()
-
 confusionMatrix(
   factor(test$Class, levels = 0:1),
   factor(Y_pred, levels = 0:1),
@@ -268,14 +309,13 @@ confusionMatrix(
 )
 ```
 
-Obtenemos un F1-score de 0.75
+El mejor resultado obtenido corresponde a un F1-score de 0.75
 
 ### Ejemplo 2: SMOTE + Regresión logística
 
 ```{r}
 model <- glm(Class~., data = train_smote, family = binomial())
 Y_pred <- predict(model, test, type = "response") %>% round() %>% as.integer()
-
 confusionMatrix(
   factor(test$Class, levels = 0:1),
   factor(Y_pred, levels = 0:1),
@@ -286,18 +326,17 @@ confusionMatrix(
 
 Se han probado las siguientes combinaciones:
 
-K: 2, 5, 10
-perc.over: 100, 200, 500, 1000, 5000, 10000
+K: 2, 5, 10 perc.over: 100, 200, 500, 1000, 5000, 10000
 
-La mejor combinación es k=2 y perc.over=5 con un F1_Score de 0,80. Este resultado es
-ligeramente mejor que el obtenido sin técnicas de oversampling/undersampling.
+En nuestros analisis la mejor combinación que hemos obtenido es k=2 y
+perc.over=5 con un F1_Score de 0,80. Este resultado es ligeramente mejor
+que el obtenido sin técnicas de oversampling/undersampling.
 
 ### Ejemplo 3: Undersampling (Tomek Links) + Regresión logística
 
 ```{r}
 model <- glm(Class~., data = train_tomek, family = binomial())
 Y_pred <- predict(model, test, type = "response") %>% round() %>% as.integer()
-
 confusionMatrix(
   factor(test$Class, levels = 0:1),
   factor(Y_pred, levels = 0:1),
@@ -306,14 +345,13 @@ confusionMatrix(
 )
 ```
 
-Tomek solo está eliminando un 0.04% de elementos del dataset, por lo que no ayuda
-demasiado a mejorar los resultados. Probamos con uBUnder
-para ver si mejoramos el resultado con otra técnica de undersampling.
+Tomek solo está eliminando un 0.04% de elementos del dataset, por lo que
+no ayuda demasiado a mejorar los resultados. Probamos con uBUnder para
+ver si mejoramos el resultado con otra técnica de undersampling.
 
 ```{r}
 model <- glm(Class~., data = train_ubUnder, family = binomial())
 Y_pred <- predict(model, test, type = "response") %>% round() %>% as.integer()
-
 confusionMatrix(
   factor(test$Class, levels = 0:1),
   factor(Y_pred, levels = 0:1),
@@ -321,15 +359,15 @@ confusionMatrix(
   mode = "everything"
 )
 ```
-Se observa que es bastante peor el resultado obtenido por ubUnder. Descartaremos
-este algoritmo en las próximas pruebas.
+
+Se observa que es bastante peor el resultado obtenido por ubUnder.
+Descartaremos este algoritmo en las próximas pruebas.
 
 ### Ejemplo 4: NO oversampling/undersampling + Decision Tree
 
 ```{r}
 tree <- rpart(Class ~ ., data = train)
 Y_pred <- predict(tree, newdata = test) %>% round() %>% as.integer()
-
 confusionMatrix(
   factor(test$Class, levels = 0:1),
   factor(Y_pred, levels = 0:1),
@@ -337,7 +375,8 @@ confusionMatrix(
   mode = "everything"
 )
 ```
-F-Score: 0.78
+
+El mejor resultado obtenido corresponde a un F-Score = 0.78
 
 ### Ejemplo 5: SMOTE + Decision Tree
 
@@ -345,10 +384,8 @@ F-Score: 0.78
 train_smote <- ubSMOTE(X_train, factor(Y_train$Class, levels = 0:1), k = 2, perc.over = 500, perc.under = 0)
 train_smote <- rbind(train, data.frame(train_smote$X, Class = train_smote$Y))
 train_smote$Class <- as.integer(train_smote$Class)
-
 tree <- rpart(Class ~ ., data = train_smote)
 Y_pred <- predict(tree, newdata = test) %>% round() %>% as.integer()
-
 confusionMatrix(
   factor(test$Class, levels = 0:1),
   factor(Y_pred, levels = 0:1),
@@ -357,18 +394,16 @@ confusionMatrix(
 )
 ```
 
-Obtenemos un F-Score superior al obtenido con el algoritmo de la regresión logística: 0.80
+El mejor resultado obtenido corresponde a un F-Score = 0.80
 
 ### Ejemplo 6: Tomek Links + Decision Tree
 
 ```{r}
 tree <- rpart(Class ~ ., data = train_tomek)
 Y_pred <- predict(tree, newdata = test)
-
 pred_aux <- rep("0", dim(Y_pred)[1])
 pred_aux[Y_pred[,2] >= 0.5] = "1"
 Y_pred <- as.factor(pred_aux)
-
 confusionMatrix(
   factor(test$Class, levels = 0:1),
   factor(Y_pred, levels = 0:1),
@@ -377,18 +412,17 @@ confusionMatrix(
 )
 ```
 
-Con un valor de 0.81, Tomek links + Decision tree es el mejor resultado obtenido.
+Con un valor de 0.81, Tomek links + Decision tree es el mejor resultado
+obtenido.
 
 ### Ejemplo 6: Tomek Links + Decision Tree
 
 ```{r}
 tree <- rpart(Class ~ ., data = train_tomek)
 Y_pred <- predict(tree, newdata = test)
-
 pred_aux <- rep("0", dim(Y_pred)[1])
 pred_aux[Y_pred[,2] >= 0.5] = "1"
 Y_pred <- as.factor(pred_aux)
-
 confusionMatrix(
   factor(test$Class, levels = 0:1),
   factor(Y_pred, levels = 0:1),
@@ -399,25 +433,25 @@ confusionMatrix(
 
 ### Ejemplo 7: Cost sensitive + Logistic regresion
 
+Teniendo los costes de clasificar erroneamente ambas clases, una manera
+de tenerlos en cuenta a la hora de clasificar es subir el umbral de
+decisión de la regresión logística el cual normalmente es simplemente es
+0,5. Este threeshold viene determinado por la siguiente formula:
+
+$$th = \frac{c(+1,-1) - c(-1,-1)}{c(+1,-1) - c(+1,+1) + c(-1,+1) - c(-1,-1)}.$$
+De esta manera, solamente se clasificara como legal si estamos al (1-th)%
+seguros de que esta es legal.
+
 ```{r}
-# Ponderamos los pesos de manera que las clases minoritarias valgan 100 veces
-# más que las mayoritarias
-weights <- Y_train %>% 
-  mutate(weight = case_when(
-    Class == 0 ~ 1, 
-    Class == 1 ~ 100
-  ))
 
-weights <- select(weights, -c(Class))
-
-classifier <- caret::train
-model <- cost.proportionate.classifier(X_train, Y_train, weights, classifier)
-
-predict(model, X_test, aggregation = "raw", type = "raw")
-predict(model, X, aggregation = "weighted", type = "prob")
-
-
-Y_pred <- predict(model, test, type = "response") %>% round() %>% as.integer()
+credit_task_train = makeClassifTask(data = train , target = "Class")
+credit_task_test = makeClassifTask(data = test , target = "Class")
+th = cost2_1/(cost2_1+cost1_2)
+lrn = makeLearner("classif.multinom", predict.type = "prob", trace = FALSE)
+mod = train(lrn, credit_task_train)
+pred = predict(mod, task = credit_task_test)
+pred.th = setThreshold(pred, th)
+Y_pred = pred.th$data$response
 
 confusionMatrix(
   factor(test$Class, levels = 0:1),
@@ -426,4 +460,16 @@ confusionMatrix(
   mode = "everything"
 )
 
+
+
 ```
+
+Esta técnica es la que mejores resultados nos ha entregado en lo que se refiere al numero de transacciones fraudulentas clasificadas como normales las cuales son las mas costosas, aunque tambien hay un mayor numero de transacciones normales clasificadas como fraudulentas.
+
+## Conclusiones
+
+Hemos comprobado como aplicando diversas técnicas podemos mejorar la
+predicción de los clasificadores cuando el dataset presenta un
+desequilibrio entre clases. Sin embargo esta clasificación sigue sin ser
+perfecta, dejando entrever que aplicar otras técnicas quizá consigan
+mejorar aún mas el resultado.
